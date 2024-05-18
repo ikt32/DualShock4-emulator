@@ -1,6 +1,6 @@
 #include <Windows.h>
 #include <mutex>
-#include "ViGEm\Client.h"
+#include <ViGEm\Client.h>
 #include "IniReader\IniReader.h"
 #include "DS4Emulator.h"
 
@@ -34,6 +34,27 @@ std::thread *pSocketThread = NULL;
 unsigned char freePieIMU[50];
 float AccelX = 0, AccelY = 0, AccelZ = 0, GyroX = 0, GyroY = 0, GyroZ = 0;
 USHORT curTimeStamp = 0;
+
+VOID FORCEINLINE DS4_SET_DPAD_EX(
+	_Out_ PDS4_REPORT_EX Report,
+	_In_ DS4_DPAD_DIRECTIONS Dpad
+) {
+	Report->Report.wButtons &= ~0xF;
+	Report->Report.wButtons |= (USHORT)Dpad;
+}
+
+VOID FORCEINLINE DS4_REPORT_INIT_EX(
+	_Out_ PDS4_REPORT_EX Report
+) {
+	RtlZeroMemory(Report, sizeof(DS4_REPORT_EX));
+
+	Report->Report.bThumbLX = 0x80;
+	Report->Report.bThumbLY = 0x80;
+	Report->Report.bThumbRX = 0x80;
+	Report->Report.bThumbRY = 0x80;
+
+	DS4_SET_DPAD_EX(Report, DS4_BUTTON_DPAD_NONE);
+}
 
 float bytesToFloat(unsigned char b3, unsigned char b2, unsigned char b1, unsigned char b0)
 {
@@ -333,8 +354,11 @@ int main(int argc, char **argv)
 	auto ret = vigem_connect(client);
 	const auto ds4 = vigem_target_ds4_alloc();
 	ret = vigem_target_add(client, ds4);
+#pragma warning( push )
+#pragma warning( disable: 4996 )
 	ret = vigem_target_ds4_register_notification(client, ds4, &notification, nullptr);
-	DS4_REPORT_EX report;
+#pragma warning( pop )
+	DS4_REPORT_EX reportEx;
 	bool TouchpadSwipeUp = false, TouchpadSwipeDown = false;
 	bool TouchpadSwipeLeft = false, TouchpadSwipeRight = false;
 	bool MotionShaking = false, MotionShakingSwap = false;
@@ -382,7 +406,8 @@ int main(int argc, char **argv)
 
 	while ( !( (GetAsyncKeyState(VK_LMENU) & 0x8000 && GetAsyncKeyState(VK_ESCAPE) & 0x8000) ) )
 	{
-		DS4_REPORT_INIT_EX(&report);
+		DS4_REPORT_INIT_EX(&reportEx);
+		auto& report = reportEx.Report;
 
 		uint16_t TouchX = 0;
 		uint16_t TouchY = 0;
@@ -578,22 +603,22 @@ int main(int argc, char **argv)
 						report.wButtons |= DS4_BUTTON_TRIGGER_RIGHT;
 
 					if (myPState.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_UP)
-						DS4_SET_DPAD_EX(&report, DS4_BUTTON_DPAD_NORTH);
+						DS4_SET_DPAD_EX(&reportEx, DS4_BUTTON_DPAD_NORTH);
 					if (myPState.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN)
-						DS4_SET_DPAD_EX(&report, DS4_BUTTON_DPAD_SOUTH);
+						DS4_SET_DPAD_EX(&reportEx, DS4_BUTTON_DPAD_SOUTH);
 					if (myPState.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT)
-						DS4_SET_DPAD_EX(&report, DS4_BUTTON_DPAD_WEST);
+						DS4_SET_DPAD_EX(&reportEx, DS4_BUTTON_DPAD_WEST);
 					if (myPState.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT)
-						DS4_SET_DPAD_EX(&report, DS4_BUTTON_DPAD_EAST);
+						DS4_SET_DPAD_EX(&reportEx, DS4_BUTTON_DPAD_EAST);
 
 					if (myPState.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_UP && myPState.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT)
-						DS4_SET_DPAD_EX(&report, DS4_BUTTON_DPAD_NORTHEAST);
+						DS4_SET_DPAD_EX(&reportEx, DS4_BUTTON_DPAD_NORTHEAST);
 					if (myPState.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN && myPState.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT)
-						DS4_SET_DPAD_EX(&report, DS4_BUTTON_DPAD_SOUTHWEST);
+						DS4_SET_DPAD_EX(&reportEx, DS4_BUTTON_DPAD_SOUTHWEST);
 					if (myPState.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT && myPState.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_UP)
-						DS4_SET_DPAD_EX(&report, DS4_BUTTON_DPAD_NORTHWEST);
+						DS4_SET_DPAD_EX(&reportEx, DS4_BUTTON_DPAD_NORTHWEST);
 					if (myPState.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT && myPState.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN)
-						DS4_SET_DPAD_EX(&report, DS4_BUTTON_DPAD_SOUTHEAST);
+						DS4_SET_DPAD_EX(&reportEx, DS4_BUTTON_DPAD_SOUTHEAST);
 				}
 
 				// Touchpad swipes
@@ -755,13 +780,13 @@ int main(int argc, char **argv)
 					report.wButtons |= DS4_BUTTON_SHOULDER_RIGHT;
 
 				if ((GetAsyncKeyState(KEY_ID_DPAD_UP) & 0x8000) != 0)
-					DS4_SET_DPAD_EX(&report, DS4_BUTTON_DPAD_NORTH);
+					DS4_SET_DPAD_EX(&reportEx, DS4_BUTTON_DPAD_NORTH);
 				if ((GetAsyncKeyState(KEY_ID_DPAD_DOWN) & 0x8000) != 0)
-					DS4_SET_DPAD_EX(&report, DS4_BUTTON_DPAD_SOUTH);
+					DS4_SET_DPAD_EX(&reportEx, DS4_BUTTON_DPAD_SOUTH);
 				if ((GetAsyncKeyState(KEY_ID_DPAD_LEFT) & 0x8000) != 0)
-					DS4_SET_DPAD_EX(&report, DS4_BUTTON_DPAD_WEST);
+					DS4_SET_DPAD_EX(&reportEx, DS4_BUTTON_DPAD_WEST);
 				if ((GetAsyncKeyState(KEY_ID_DPAD_RIGHT) & 0x8000) != 0)
-					DS4_SET_DPAD_EX(&report, DS4_BUTTON_DPAD_EAST);
+					DS4_SET_DPAD_EX(&reportEx, DS4_BUTTON_DPAD_EAST);
 			
 				// Touchpad, left
 				if ((GetAsyncKeyState(KEY_ID_TOUCHPAD_LEFT) & 0x8000) != 0) {TouchX = 320; TouchY = 471; }
@@ -884,7 +909,7 @@ int main(int argc, char **argv)
 		curTimeStamp = curTimeStamp + MotionSens * 100;
 		report.wTimestamp = curTimeStamp;
 
-		ret = vigem_target_ds4_update_ex(client, ds4, report);
+		ret = vigem_target_ds4_update_ex(client, ds4, reportEx);
 
 		// Don't overload the CPU with reading
 		if (EmulationMode == XboxMode)
